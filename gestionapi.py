@@ -56,7 +56,7 @@ def get_summoner_stats(summoner_name, tagline):
     # Tipos de partidas
     # [400,   450,  420,      440] 
     # Normal, ARAM, Solo/Duo, Flex
-    game_types_to_count = [440]
+    game_types_to_count = [420]
     
     for match_id in matches:
         match_details = get_match_details(match_id)
