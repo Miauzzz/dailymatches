@@ -47,7 +47,7 @@ def get_summoner_stats(summoner_name, tagline):
     if last_update:
         time_diff = (datetime.now() - last_update).total_seconds() // 60
         if time_diff < 3:
-            return make_response(f"Victorias: {summoner['wins']}, Derrotas: {summoner['losses']}\n(Actualizado hace {int(time_diff)} minutos)", 200)
+            return make_response(f"Victorias: {summoner['wins']}, Derrotas: {summoner['losses']} (Actualizado hace {int(time_diff)} minutos)", 200)
 
     puuid = summoner['puuid']
     matches = get_matches(puuid)
