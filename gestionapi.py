@@ -87,7 +87,7 @@ def get_summoner_stats(summoner_name, tagline):
         {"$set": {"wins": wins, "losses": losses, "last_update": last_update}}
     )
 
-    response_message = f"Victorias: {wins}, Derrotas: {losses}, (Actualizado {last_update.strftime('%H:%M - %d/%m/%Y')})"
+    response_message = f"Victorias: {wins}, Derrotas: {losses} (Actualizado {last_update.strftime('%H:%M - %d/%m/%Y')})"
     return make_response(response_message, 200)
 
 @summoner_bp.route('/', methods=['POST'])
