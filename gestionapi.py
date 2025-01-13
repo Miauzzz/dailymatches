@@ -52,7 +52,7 @@ def get_summoner_stats(summoner_name, tagline):
         last_update = last_update.replace(tzinfo=pytz.utc).astimezone(chile_tz)
         time_diff = (datetime.now(chile_tz) - last_update).total_seconds() // 60
         if time_diff < 3:
-            response_message = f"Victorias: {summoner['wins']}, Derrotas: {summoner['losses']}, (Actualizado: {last_update.strftime('%H:%M - %d/%m/%Y')})"
+            response_message = f"Victorias: {summoner['wins']}, Derrotas: {summoner['losses']}  (Actualizado: {last_update.strftime('%H:%M - %d/%m/%Y')})"
             return make_response(response_message, 200)
 
     puuid = summoner['puuid']
