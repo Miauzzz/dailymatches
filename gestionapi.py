@@ -6,13 +6,13 @@ from db import summoners_collection
 from dotenv import load_dotenv
 from collections import OrderedDict
 from flask_caching import Cache
+from flask import make_response
 
 load_dotenv()
 
 RIOT_API_KEY = os.getenv('RIOT_API_KEY')
 summoner_bp = Blueprint('summoner', __name__)
 
-# Configuración de caché
 cache = Cache()
 
 def get_summoner_info(summoner_name, tagline):
@@ -41,18 +41,23 @@ def get_summoner_stats(summoner_name, tagline):
     tagline = tagline.lower()
     summoner = summoners_collection.find_one({"summoner_name": summoner_name, "tagline": tagline})
     if not summoner:
-        return jsonify({"error": "No existe el invocador en la base de datos"}), 404
+        return make_response("No existe el invocador en la base de datos", 404)
+
+    last_update = summoner.get('last_update')
+    if last_update:
+        time_diff = (datetime.now() - last_update).total_seconds() // 60
+        if time_diff < 3:
+            return make_response(f"Victorias: {summoner['wins']}, Derrotas: {summoner['losses']}\n(Actualizado hace {int(time_diff)} minutos)", 200)
 
     puuid = summoner['puuid']
     matches = get_matches(puuid)
     wins, losses = 0, 0
 
-    # Tipos de partidas a contar
+    # Tipos de partidas
     # [400,   450,  420,      440] 
     # Normal, ARAM, Solo/Duo, Flex
     game_types_to_count = [440]
     
-
     for match_id in matches:
         match_details = get_match_details(match_id)
         if match_details:
@@ -76,9 +81,8 @@ def get_summoner_stats(summoner_name, tagline):
         {"$set": {"wins": wins, "losses": losses, "last_update": last_update}}
     )
 
-    formatted_last_update = last_update.strftime("%H:%M - %d/%m/%Y")
-    response_message = f"Victorias: {wins}, Derrotas: {losses} (Actualizado a las {formatted_last_update})"
-    return jsonify({"message": response_message})
+    response_message = f"Victorias: {wins}, Derrotas: {losses}\n(Actualizado hace 0 minutos)"
+    return make_response(response_message, 200)
 
 @summoner_bp.route('/', methods=['POST'])
 def add_summoner():
@@ -115,4 +119,4 @@ def add_summoner():
         "last_update": datetime.now()
     })
 
-    return jsonify({"message": "Invocador agregado exitosamente"}), 201
+    return jsonify("Invocador agregado exitosamente"), 201
