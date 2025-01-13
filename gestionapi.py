@@ -14,7 +14,6 @@ load_dotenv()
 RIOT_API_KEY = os.getenv('RIOT_API_KEY')
 summoner_bp = Blueprint('summoner', __name__)
 
-# Configuración de caché
 cache = Cache()
 
 def get_summoner_info(summoner_name, tagline):
@@ -25,7 +24,7 @@ def get_summoner_info(summoner_name, tagline):
 def get_matches(puuid):
     chile_tz = pytz.timezone('America/Santiago') 
     now = datetime.now(chile_tz) 
-    start_time = datetime(now.year, now.month, now.day, tzinfo=chile_tz)
+    start_time = datetime(now.year, now.month, now.day, tzinfo=chile_tz)  # 00:00 del día actual en Chile
     start_timestamp = int(start_time.timestamp())
     end_timestamp = int(now.timestamp())
     url = f"https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?startTime={start_timestamp}&endTime={end_timestamp}&api_key={RIOT_API_KEY}"
@@ -49,10 +48,10 @@ def get_summoner_stats(summoner_name, tagline):
     chile_tz = pytz.timezone('America/Santiago')
     last_update = summoner.get('last_update')
     if last_update:
-        last_update = last_update.replace(tzinfo=pytz.utc).astimezone(chile_tz)
+        last_update = last_update.replace(tzinfo=pytz.utc).astimezone(chile_tz)  # Convertir last_update a la zona horaria de Chile
         time_diff = (datetime.now(chile_tz) - last_update).total_seconds() // 60
         if time_diff < 3:
-            response_message = f"Victorias: {summoner['wins']}, Derrotas: {summoner['losses']}  (Actualizado: {last_update.strftime('%H:%M - %d/%m/%Y')})"
+            response_message = f"Victorias: {summoner['wins']} y Derrotas: {summoner['losses']} (Actualizado: {last_update.strftime('%H:%M')})"
             return make_response(response_message, 200)
 
     puuid = summoner['puuid']
@@ -87,7 +86,7 @@ def get_summoner_stats(summoner_name, tagline):
         {"$set": {"wins": wins, "losses": losses, "last_update": last_update}}
     )
 
-    response_message = f"Victorias: {wins}, Derrotas: {losses} (Actualizado {last_update.strftime('%H:%M - %d/%m/%Y')})"
+    response_message = f"Victorias: {wins} y Derrotas: {losses} (Actualizado: {last_update.strftime('%H:%M')})"
     return make_response(response_message, 200)
 
 @summoner_bp.route('/', methods=['POST'])
