@@ -2,6 +2,7 @@ import os
 import requests
 from flask import Blueprint, request, jsonify
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from db import summoners_collection
 from dotenv import load_dotenv
 from collections import OrderedDict
@@ -21,8 +22,9 @@ def get_summoner_info(summoner_name, tagline):
     return response.json() if response.status_code == 200 else None
 
 def get_matches(puuid):
-    now = datetime.now()
-    start_time = datetime(now.year, now.month, now.day)
+    chile_tz = ZoneInfo("America/Santiago")
+    now = datetime.now(chile_tz)
+    start_time = datetime(now.year, now.month, now.day, tzinfo=chile_tz)
     start_timestamp = int(start_time.timestamp())
     end_timestamp = int(now.timestamp())
     url = f"https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?startTime={start_timestamp}&endTime={end_timestamp}&api_key={RIOT_API_KEY}"
