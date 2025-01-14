@@ -108,7 +108,7 @@ def get_summoner_stats(summoner_name, tagline):
     puuid = summoner['puuid']
     matches = get_matches(puuid)
     if not matches:
-        response_message = f"Victorias: {summoner['wins']} y Derrotas: {summoner['losses']} (Actualizado: {last_update.strftime('%H:%M')}) // Error en la API de riot //"
+        response_message = f"Victorias: {summoner['wins']} y Derrotas: {summoner['losses']} (Actualizado a las {last_update.strftime('%H:%M')}) // Error en la API de riot //"
         return make_response(response_message, 200)
 
     wins, losses = 0, 0
