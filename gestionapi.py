@@ -49,6 +49,7 @@ def get_summoner_stats(summoner_name, tagline):
     puuid = summoner['puuid']
     matches = get_matches(puuid)
     wins, losses = 0, 0
+    data_obtained = True  # Variable para indicar si la obtención de datos fue exitosa
 
     # Tipos de partidas a contar
     # [400,   450,  420,      440] 
@@ -58,30 +59,54 @@ def get_summoner_stats(summoner_name, tagline):
 
     for match_id in matches:
         match_details = get_match_details(match_id)
-        if match_details:
-            game_duration = match_details['info']['gameDuration']
-            if game_duration < 300:  # Filtrar partidas "remake" (menos de 5 minutos)
-                continue
-            game_type = match_details['info']['queueId']
-            if game_type not in game_types_to_count:
-                continue
-            for participant in match_details['info']['participants']:
-                if participant['puuid'] == puuid:
-                    if participant['win']:
-                        wins += 1
-                    else:
-                        losses += 1
-                    break
+        if not match_details:
+            print("ERROR | match_details No se han podido obtener desde la API de Riot.")
+            data_obtained = False
+            continue
 
-    last_update = datetime.now(tz=chile_tz)
-    summoners_collection.update_one(
-        {"summoner_name": summoner_name, "tagline": tagline},
-        {"$set": {"wins": wins, "losses": losses, "last_update": last_update}}
-    )
+        if 'info' not in match_details or 'participants' not in match_details['info']:
+            print("ERROR | Estructura de datos inesperada en la respuesta de la API de Riot.")
+            data_obtained = False
+            continue
 
-    formatted_last_update = last_update.strftime("%H:%M")
-    response_message = f"Victorias: {wins}, Derrotas: {losses} (Actualizado a las {formatted_last_update})"
-    return jsonify(response_message)
+        game_duration = match_details['info'].get('gameDuration', 0)
+        if game_duration < 300:  # Filtrar partidas "remake" (menos de 5 minutos)
+            continue
+
+        game_type = match_details['info'].get('queueId', None)
+        if game_type not in game_types_to_count:
+            continue
+
+        for participant in match_details['info'].get('participants', []):
+            if participant.get('puuid') == puuid:
+                if participant.get('win'):
+                    wins += 1
+                else:
+                    losses += 1
+                break
+            
+    if data_obtained:
+        print("EXITO | Se han obtenido los datos correctamente desde la API de Riot.")
+
+        last_update = datetime.now(tz=chile_tz)
+        update_result = summoners_collection.update_one(
+            {"summoner_name": summoner_name, "tagline": tagline},
+            {"$set": {"wins": wins, "losses": losses, "last_update": last_update}}
+        )
+
+        if update_result.modified_count > 0:
+            print("EXITO | Los datos se han actualizado correctamente en la base de datos.")
+        else:
+            print("ERROR | No se han podido actualizar los datos en la base de datos.")
+
+        formatted_last_update = last_update.strftime("%H:%M")
+        response_message = f"Victorias: {wins}, Derrotas: {losses} (Actualizado a las {formatted_last_update})"
+        
+        if not data_obtained:
+            response_message += " || Error con la API de Riot. ||"
+
+        return jsonify(response_message)
+
 
 @summoner_bp.route('/', methods=['POST'])
 def add_summoner():
@@ -118,6 +143,6 @@ def add_summoner():
         "last_update": datetime.now()
     })
 
-    return jsonify({"message": "Invocador agregado exitosamente"}), 201
+    return jsonify({"Invocador agregado exitosamente"}), 201
 
 #funcional 100%, este es un buen punto de retorno. Falta mejorar visuales y validaciones.
