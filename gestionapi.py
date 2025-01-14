@@ -23,7 +23,7 @@ def get_summoner_info(summoner_name, tagline):
 
 def get_matches(puuid):
     chile_tz = ZoneInfo("America/Santiago")
-    now = datetime.now(chile_tz)
+    now = datetime.now(tz=chile_tz)
     start_time = datetime(now.year, now.month, now.day, tzinfo=chile_tz)
     start_timestamp = int(start_time.timestamp())
     end_timestamp = int(now.timestamp())
