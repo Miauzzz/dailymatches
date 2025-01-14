@@ -72,7 +72,7 @@ def get_summoner_stats(summoner_name, tagline):
                         losses += 1
                     break
 
-    last_update = datetime.now()
+    last_update = datetime.now(tz=chile_tz)
     summoners_collection.update_one(
         {"summoner_name": summoner_name, "tagline": tagline},
         {"$set": {"wins": wins, "losses": losses, "last_update": last_update}}
