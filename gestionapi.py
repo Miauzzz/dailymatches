@@ -1,10 +1,9 @@
 import os
 import requests
 from flask import Blueprint, request, jsonify
-from datetime import datetime, timedelta
+from datetime import datetime
 from db import summoners_collection
 from dotenv import load_dotenv
-from collections import OrderedDict
 from flask_caching import Cache
 from flask import make_response
 import pytz
