@@ -39,6 +39,7 @@ def get_match_details(match_id):
 @summoner_bp.route('/<summoner_name>/<tagline>', methods=['GET'])
 @cache.cached(timeout=60, query_string=True)
 def get_summoner_stats(summoner_name, tagline):
+    chile_tz = ZoneInfo("America/Santiago")
     summoner_name = summoner_name.lower()
     tagline = tagline.lower()
     summoner = summoners_collection.find_one({"summoner_name": summoner_name, "tagline": tagline})
