@@ -6,14 +6,13 @@ from db import summoners_collection
 from dotenv import load_dotenv
 from collections import OrderedDict
 from flask_caching import Cache
-from flask import make_response
-import pytz
 
 load_dotenv()
 
 RIOT_API_KEY = os.getenv('RIOT_API_KEY')
 summoner_bp = Blueprint('summoner', __name__)
 
+# Configuración de caché
 cache = Cache()
 
 def get_summoner_info(summoner_name, tagline):
@@ -22,9 +21,8 @@ def get_summoner_info(summoner_name, tagline):
     return response.json() if response.status_code == 200 else None
 
 def get_matches(puuid):
-    chile_tz = pytz.timezone('America/Santiago') 
-    now = datetime.now(chile_tz) 
-    start_time = datetime(now.year, now.month, now.day, tzinfo=chile_tz)  # 00:00 del día actual en Chile
+    now = datetime.now()
+    start_time = datetime(now.year, now.month, now.day)
     start_timestamp = int(start_time.timestamp())
     end_timestamp = int(now.timestamp())
     url = f"https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?startTime={start_timestamp}&endTime={end_timestamp}&api_key={RIOT_API_KEY}"
@@ -43,16 +41,7 @@ def get_summoner_stats(summoner_name, tagline):
     tagline = tagline.lower()
     summoner = summoners_collection.find_one({"summoner_name": summoner_name, "tagline": tagline})
     if not summoner:
-        return make_response("No existe el invocador en la base de datos", 404)
-
-    chile_tz = pytz.timezone('America/Santiago')
-    last_update = summoner.get('last_update')
-    if last_update:
-        last_update = last_update.replace(tzinfo=pytz.utc).astimezone(chile_tz)  # Convertir last_update a la zona horaria de Chile
-        time_diff = (datetime.now(chile_tz) - last_update).total_seconds() // 60
-        if time_diff < 3:
-            response_message = f"Victorias: {summoner['wins']} y Derrotas: {summoner['losses']} (Actualizado a las {last_update.strftime('%H:%M')})"
-            return make_response(response_message, 200)
+        return jsonify({"error": "No existe el invocador en la base de datos"}), 404
 
     puuid = summoner['puuid']
     matches = get_matches(puuid)
@@ -63,6 +52,7 @@ def get_summoner_stats(summoner_name, tagline):
     # Normal, ARAM, Solo/Duo, Flex
     game_types_to_count = [420]
     
+
     for match_id in matches:
         match_details = get_match_details(match_id)
         if match_details:
@@ -80,14 +70,15 @@ def get_summoner_stats(summoner_name, tagline):
                         losses += 1
                     break
 
-    last_update = datetime.now(chile_tz)
+    last_update = datetime.now()
     summoners_collection.update_one(
         {"summoner_name": summoner_name, "tagline": tagline},
         {"$set": {"wins": wins, "losses": losses, "last_update": last_update}}
     )
 
-    response_message = f"Victorias: {wins} y Derrotas: {losses} (Actualizado: {last_update.strftime('%H:%M')})"
-    return make_response(response_message, 200)
+    formatted_last_update = last_update.strftime("%H:%M - %d/%m/%Y")
+    response_message = f"Victorias: {wins}, Derrotas: {losses} (Actualizado a las {formatted_last_update})"
+    return jsonify({"message": response_message})
 
 @summoner_bp.route('/', methods=['POST'])
 def add_summoner():
@@ -121,7 +112,9 @@ def add_summoner():
         "puuid": summoner_info['puuid'],
         "wins": 0,
         "losses": 0,
-        "last_update": datetime.now(pytz.timezone('America/Santiago'))
+        "last_update": datetime.now()
     })
 
-    return jsonify("Invocador agregado exitosamente"), 201
+    return jsonify({"message": "Invocador agregado exitosamente"}), 201
+    
+#FUNCIONAL, ESTE ES UN PUNTO DE RETORNO (FALTAN MEJORAS VISUALES Y VALIDACIONES)
