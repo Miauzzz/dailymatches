@@ -19,7 +19,12 @@ cache = Cache()
 def get_summoner_info(summoner_name, tagline):
     url = f"https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{summoner_name}/{tagline}?api_key={RIOT_API_KEY}"
     response = requests.get(url)
-    return response.json() if response.status_code == 200 else None
+    if response.status_code == 200:
+        print("Datos obtenidos de forma correcta desde la API de riot.")
+        return response.json()
+    else:
+        print("Error en obtener datos de la API de Riot.")
+        return None
 
 def get_matches(puuid):
     chile_tz = pytz.timezone('America/Santiago') 
@@ -29,12 +34,22 @@ def get_matches(puuid):
     end_timestamp = int(now.timestamp())
     url = f"https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?startTime={start_timestamp}&endTime={end_timestamp}&api_key={RIOT_API_KEY}"
     response = requests.get(url)
-    return response.json() if response.status_code == 200 else []
+    if response.status_code == 200:
+        print("Datos obtenidos de forma correcta desde la API de riot.")
+        return response.json()
+    else:
+        print("Error en obtener datos de la API de Riot.")
+        return []
 
 def get_match_details(match_id):
     url = f"https://americas.api.riotgames.com/lol/match/v5/matches/{match_id}?api_key={RIOT_API_KEY}"
     response = requests.get(url)
-    return response.json() if response.status_code == 200 else None
+    if response.status_code == 200:
+        print("Datos obtenidos de forma correcta desde la API de riot.")
+        return response.json()
+    else:
+        print("Error en obtener datos de la API de Riot.")
+        return None
 
 @summoner_bp.route('/<summoner_name>/<tagline>', methods=['GET'])
 @cache.cached(timeout=60, query_string=True)
@@ -51,11 +66,51 @@ def get_summoner_stats(summoner_name, tagline):
         last_update = last_update.replace(tzinfo=pytz.utc).astimezone(chile_tz)  # Convertir last_update a la zona horaria de Chile
         time_diff = (datetime.now(chile_tz) - last_update).total_seconds() // 60
         if time_diff < 3:
-            response_message = f"Victorias: {summoner['wins']} y Derrotas: {summoner['losses']} (Actualizado: {last_update.strftime('%H:%M')})"
+            puuid = summoner['puuid']
+            matches = get_matches(puuid)
+            if not matches:
+                response_message = f"Victorias: {summoner['wins']} y Derrotas: {summoner['losses']} (Actualizado: {last_update.strftime('%H:%M')}) // Error en la API de riot //"
+                return make_response(response_message, 200)
+
+            wins, losses = 0, 0
+
+            # Tipos de partidas a contar
+            # [400,   450,  420,      440] 
+            # Normal, ARAM, Solo/Duo, Flex
+            game_types_to_count = [420]
+            
+            for match_id in matches:
+                match_details = get_match_details(match_id)
+                if match_details:
+                    game_duration = match_details['info']['gameDuration']
+                    if game_duration < 300:  # Filtrar partidas "remake" (menos de 5 minutos)
+                        continue
+                    game_type = match_details['info']['queueId']
+                    if game_type not in game_types_to_count:
+                        continue
+                    for participant in match_details['info']['participants']:
+                        if participant['puuid'] == puuid:
+                            if participant['win']:
+                                wins += 1
+                            else:
+                                losses += 1
+                            break
+
+            last_update = datetime.now(chile_tz)
+            summoners_collection.update_one(
+                {"summoner_name": summoner_name, "tagline": tagline},
+                {"$set": {"wins": wins, "losses": losses, "last_update": last_update}}
+            )
+
+            response_message = f"Victorias: {wins} y Derrotas: {losses} (Actualizado: {last_update.strftime('%H:%M')})"
             return make_response(response_message, 200)
 
     puuid = summoner['puuid']
     matches = get_matches(puuid)
+    if not matches:
+        response_message = f"Victorias: {summoner['wins']} y Derrotas: {summoner['losses']} (Actualizado: {last_update.strftime('%H:%M')}) // Error en la API de riot //"
+        return make_response(response_message, 200)
+
     wins, losses = 0, 0
 
     # Tipos de partidas a contar
