@@ -78,7 +78,7 @@ def get_summoner_stats(summoner_name, tagline):
 
     formatted_last_update = last_update.strftime("%H:%M - %d/%m/%Y")
     response_message = f"Victorias: {wins}, Derrotas: {losses} (Actualizado a las {formatted_last_update})"
-    return jsonify({"message": response_message})
+    return jsonify(response_message)
 
 @summoner_bp.route('/', methods=['POST'])
 def add_summoner():
