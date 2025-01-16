@@ -106,7 +106,7 @@ def get_summoner_stats(summoner_name, tagline):
     )
 
     formatted_last_update = last_update.strftime("%H:%M")
-    response_message = f"Victorias: {wins}, Derrotas: {losses} {league_status} | (Actualizado a las {formatted_last_update})"
+    response_message = f"Victorias: {wins}, Derrotas: {losses} {league_status} | (Última Act.: {formatted_last_update})"
     return Response(response_message, mimetype='text/plain')
 
 @summoner_bp.route('/', methods=['POST'])
