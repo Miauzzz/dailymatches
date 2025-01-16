@@ -1,6 +1,6 @@
 import os
 import requests
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from db import summoners_collection
@@ -18,6 +18,20 @@ cache = Cache()
 
 def get_summoner_info(summoner_name, tagline):
     url = f"https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{summoner_name}/{tagline}?api_key={RIOT_API_KEY}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
+    return None
+
+def get_summoner_id(puuid):
+    url = f"https://la2.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/{puuid}?api_key={RIOT_API_KEY}"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return response.json()
+    return None
+
+def get_league_info(summoner_id):
+    url = f"https://la2.api.riotgames.com/lol/league/v4/entries/by-summoner/{summoner_id}?api_key={RIOT_API_KEY}"
     response = requests.get(url)
     return response.json() if response.status_code == 200 else None
 
@@ -44,105 +58,110 @@ def get_summoner_stats(summoner_name, tagline):
     tagline = tagline.lower()
     summoner = summoners_collection.find_one({"summoner_name": summoner_name, "tagline": tagline})
     if not summoner:
-        return jsonify({"error": "No existe el invocador en la base de datos"}), 404
+        return Response("No existe el invocador en la base de datos", status=404, mimetype='text/plain')
 
     puuid = summoner['puuid']
+    summoner_id = summoner['id']
     matches = get_matches(puuid)
     wins, losses = 0, 0
-    data_obtained = True  # Variable para indicar si la obtención de datos fue exitosa
 
     # Tipos de partidas a contar
     # [400,   450,  420,      440] 
     # Normal, ARAM, Solo/Duo, Flex
     game_types_to_count = [420]
     
-
     for match_id in matches:
         match_details = get_match_details(match_id)
-        if not match_details:
-            print("ERROR | match_details No se han podido obtener desde la API de Riot.")
-            data_obtained = False
-            continue
+        if match_details:
+            game_duration = match_details['info']['gameDuration']
+            if game_duration < 300:  # Filtrar partidas "remake" (menos de 5 minutos)
+                continue
+            game_type = match_details['info']['queueId']
+            if game_type not in game_types_to_count:
+                continue
+            for participant in match_details['info']['participants']:
+                if participant['puuid'] == puuid:
+                    if participant['win']:
+                        wins += 1
+                    else:
+                        losses += 1
+                    break
 
-        if 'info' not in match_details or 'participants' not in match_details['info']:
-            print("ERROR | Estructura de datos inesperada en la respuesta de la API de Riot.")
-            data_obtained = False
-            continue
+    league_info = get_league_info(summoner_id)
+    if league_info:
+        league = league_info[0]['tier']
+        rank = league_info[0]['rank']
+        lp = league_info[0]['leaguePoints']
+        league_status = f"y se encuentra en {league} {rank} ({lp} LP)"
+    else:
+        league_status = "y no tiene liga asignada"
+        league = None
+        rank = None
+        lp = None
 
-        game_duration = match_details['info'].get('gameDuration', 0)
-        if game_duration < 300:  # Filtrar partidas "remake" (menos de 5 minutos)
-            continue
+    last_update = datetime.now(tz=chile_tz)
+    summoners_collection.update_one(
+        {"summoner_name": summoner_name, "tagline": tagline},
+        {"$set": {"wins": wins, "losses": losses, "tier": league, "rank": rank, "leaguePoints": lp, "last_update": last_update}}
+    )
 
-        game_type = match_details['info'].get('queueId', None)
-        if game_type not in game_types_to_count:
-            continue
-
-        for participant in match_details['info'].get('participants', []):
-            if participant.get('puuid') == puuid:
-                if participant.get('win'):
-                    wins += 1
-                else:
-                    losses += 1
-                break
-            
-    if data_obtained:
-        print("EXITO | Se han obtenido los datos correctamente desde la API de Riot.")
-
-        last_update = datetime.now(tz=chile_tz)
-        update_result = summoners_collection.update_one(
-            {"summoner_name": summoner_name, "tagline": tagline},
-            {"$set": {"wins": wins, "losses": losses, "last_update": last_update}}
-        )
-
-        if update_result.modified_count > 0:
-            print("EXITO | Los datos se han actualizado correctamente en la base de datos.")
-        else:
-            print("ERROR | No se han podido actualizar los datos en la base de datos.")
-
-        formatted_last_update = last_update.strftime("%H:%M")
-        response_message = f"Victorias: {wins}, Derrotas: {losses} (Actualizado a las {formatted_last_update})"
-        
-        if not data_obtained:
-            response_message += " || Error con la API de Riot. ||"
-
-        return jsonify(response_message)
-
+    formatted_last_update = last_update.strftime("%H:%M")
+    response_message = f"Victorias: {wins}, Derrotas: {losses} {league_status} | (Actualizado a las {formatted_last_update})"
+    return Response(response_message, mimetype='text/plain')
 
 @summoner_bp.route('/', methods=['POST'])
 def add_summoner():
     if not request.is_json:
-        return jsonify({"error": "El cuerpo de la solicitud debe ser JSON"}), 400
+        return Response("El cuerpo de la solicitud debe ser JSON", status=400, mimetype='text/plain')
 
     data = request.get_json()
     if not data:
-        return jsonify({"error": "Datos no proporcionados"}), 400
+        return Response("Datos no proporcionados", status=400, mimetype='text/plain')
 
     summoner_name = data.get('summoner_name')
     tagline = data.get('tagline')
 
     if not summoner_name or not tagline:
-        return jsonify({"error": "Faltan datos"}), 400
+        return Response("Faltan datos", status=400, mimetype='text/plain')
 
     summoner_name = summoner_name.lower()
     tagline = tagline.lower()
 
     existing_summoner = summoners_collection.find_one({"summoner_name": summoner_name, "tagline": tagline})
     if existing_summoner:
-        return jsonify({"error": "El invocador ya existe en la base de datos"}), 400
+        return Response("El invocador ya existe en la base de datos", status=400, mimetype='text/plain')
 
     summoner_info = get_summoner_info(summoner_name, tagline)
     if not summoner_info:
-        return jsonify({"error": "No existe el invocador en la base de datos de riot"}), 404
+        return Response("No existe el invocador en la base de datos de riot", status=404, mimetype='text/plain')
+
+    puuid = summoner_info['puuid']
+    summoner_id_info = get_summoner_id(puuid)
+    if not summoner_id_info or 'id' not in summoner_id_info:
+        return Response("No se pudo obtener el ID del invocador", status=500, mimetype='text/plain')
+
+    summoner_id = summoner_id_info['id']
+    league_info = get_league_info(summoner_id)
+    if league_info:
+        league = league_info[0]['tier']
+        rank = league_info[0]['rank']
+        lp = league_info[0]['leaguePoints']
+    else:
+        league = None
+        rank = None
+        lp = None
 
     summoners_collection.insert_one({
         "summoner_name": summoner_name,
         "tagline": tagline,
-        "puuid": summoner_info['puuid'],
+        "puuid": puuid,
+        "id": summoner_id,
         "wins": 0,
         "losses": 0,
+        "tier": league,
+        "rank": rank,
+        "leaguePoints": lp,
         "last_update": datetime.now()
     })
 
-    return jsonify({"Invocador agregado exitosamente"}), 201
-
-#funcional 100%, este es un buen punto de retorno. Falta mejorar visuales y validaciones.
+    return Response("Invocador agregado exitosamente", status=201, mimetype='text/plain')
