@@ -2,7 +2,7 @@ from flask import Flask
 from gestionapi import summoner_bp, cache
 
 app = Flask(__name__)
-port = int(os.environ.get("PORT", 3000))
+port = os.getenv("PORT", 3000))
 
 # Configuración de caché
 app.config['CACHE_TYPE'] = 'simple'
