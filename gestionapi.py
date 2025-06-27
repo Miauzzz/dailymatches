@@ -36,8 +36,8 @@ def get_summoner_id(puuid):
 
 
 
-def get_league_info(summoner_id):
-    url = f"https://la2.api.riotgames.com/lol/league/v4/entries/by-summoner/{summoner_id}?api_key={RIOT_API_KEY}"
+def get_league_info(puuid):
+    url = f"https://la2.api.riotgames.com/lol/league/v4/entries/by-puuid/{puuid}?api_key={RIOT_API_KEY}"
     response = requests.get(url)
     return response.json() if response.status_code == 200 else None
 
@@ -97,7 +97,6 @@ def get_queue_league_info(league_info, queue_type):
 
 
 
-
 @summoner_bp.route('/<queue_type>/<summoner>/<tagline>', methods=['GET'])
 @cache.cached(timeout=60, query_string=True)
 def get_queue_stats(queue_type, summoner, tagline):
@@ -128,12 +127,15 @@ def get_queue_stats(queue_type, summoner, tagline):
         return Response("No existe el invocador en la base de datos", status=404, mimetype='text/plain')
 
     puuid = summoner_data['puuid']
-    summoner_id = summoner_data['id_summoner']
 
     wins, losses = process_matches(puuid, queue_type)
     
     # Obtener información de liga
-    league_info = get_league_info(summoner_id)
+    league_info = get_league_info(puuid)
+    if not league_info:
+        print(f"[DEBUG] league_info está vacío o None para puuid={puuid}")
+    else:
+        print(f"[DEBUG] league_info queueTypes: {[entry.get('queueType') for entry in league_info]}")
     tier, rank, lp = get_queue_league_info(league_info, queue_type) if league_info else (None, None, None)
     
 
@@ -153,9 +155,13 @@ def get_queue_stats(queue_type, summoner, tagline):
         {"$set": update_data}
     )
 
-    league_status = f"| {tier} {rank} ({lp} LP)" if tier else "y no tiene liga asignada"
+    league_status = (
+        f"| {tier} {rank} ({lp} LP)"
+        if tier and rank and lp is not None
+        else "| Y no tiene liga asignada"
+    )
     formatted_last_update = update_data['last_update'].strftime("%H:%M")
-    response_message = f"Victorias: {wins}, Derrotas: {losses} {league_status} (Act. {formatted_last_update})"
+    response_message = f"Victorias: {wins} / Derrotas: {losses} {league_status} (Act. {formatted_last_update})"
     
     return Response(response_message, mimetype='text/plain')
 
@@ -184,7 +190,11 @@ def add_summoner():
     if not summoner_id_info:
         return Response("Error al obtener datos del invocador", status=500, mimetype='text/plain')
 
-    league_info = get_league_info(summoner_id_info['id'])
+    league_info = get_league_info(puuid)
+    if not league_info:
+        print(f"[DEBUG] league_info está vacío o None para puuid={puuid}")
+    else:
+        print(f"[DEBUG] league_info queueTypes: {[entry.get('queueType') for entry in league_info]}")
     soloq_tier, soloq_rank, soloq_lp = get_queue_league_info(league_info, 'soloq') if league_info else (None, None, None)
     flexq_tier, flexq_rank, flexq_lp = get_queue_league_info(league_info, 'flexq') if league_info else (None, None, None)
 
@@ -206,6 +216,9 @@ def add_summoner():
         "flexq_lp": flexq_lp,
         "last_update": datetime.now()
     }
+    
+    summoners_collection.insert_one(new_summoner)
+    return Response("Invocador agregado exitosamente", status=201, mimetype='text/plain')
     
     summoners_collection.insert_one(new_summoner)
     return Response("Invocador agregado exitosamente", status=201, mimetype='text/plain')
