@@ -17,6 +17,7 @@ Para la demo debes escribir en el chat !soloq
 </div>
 
 <div>
+  
 ## ✨ Características
 
 - 📈 **Seguimiento automático** de victorias y derrotas diarias
