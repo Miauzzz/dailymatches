@@ -1,5 +1,6 @@
 import azure.functions as func
 import sys
+import traceback # Para ver el detalle del error
 from io import BytesIO
 
 class WsgiMiddleware:
@@ -58,10 +59,33 @@ class WsgiMiddleware:
             mimetype=dict(headers_response[0]).get('Content-Type', 'text/plain')
         )
 
-from index import app 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
-wsgi_app = WsgiMiddleware(app.wsgi_app)
+
+# --- ZONA DE TRAMPA DE ERRORES ---
+wsgi_app = None
+error_de_carga = None
+
+try:
+    from index import app as flask_app
+    wsgi_app = WsgiMiddleware(flask_app.wsgi_app)
+
+except Exception as e:
+    error_de_carga = f"ERROR AL INICIAR FLASK:\n{str(e)}\n\n{traceback.format_exc()}"
+
 
 @app.route(route="{*route}", auth_level=func.AuthLevel.ANONYMOUS)
 def main(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
+    if error_de_carga:
+        return func.HttpResponse(
+            error_de_carga,
+            status_code=500,
+            mimetype="text/plain"
+        )
+    
+    if wsgi_app is None:
+        return func.HttpResponse(
+            "Error desconocido: La app no se inicializó correctamente.",
+            status_code=500
+        )
+
     return wsgi_app.handle(req, context)
