@@ -1,6 +1,4 @@
 azure-functions
-Flask==3.1.0
-Flask-Caching==2.3.0
 pymongo==4.10.1
 python-dotenv==1.0.1
 requests==2.32.3
