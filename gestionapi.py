@@ -1,7 +1,7 @@
 import os
 import requests
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+import pytz
 from db import summoners_collection
 from dotenv import load_dotenv
 
@@ -33,7 +33,7 @@ def get_league_info(puuid):
     return response.json() if response.status_code == 200 else None
 
 def get_matches(puuid):
-    chile_tz = ZoneInfo("America/Santiago")
+    chile_tz = pytz.timezone("America/Santiago")
     now = datetime.now(tz=chile_tz)
     
     # Lógica de las 4 AM
@@ -179,3 +179,4 @@ def logic_add_summoner(data):
     
     summoners_collection.insert_one(new_summoner)
     return {"message": "Invocador agregado exitosamente", "status": 201}
+
