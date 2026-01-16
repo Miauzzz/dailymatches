@@ -59,9 +59,7 @@ class WsgiMiddleware:
         )
 
 from index import app 
-
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
-
 wsgi_app = WsgiMiddleware(app.wsgi_app)
 
 @app.route(route="{*route}", auth_level=func.AuthLevel.ANONYMOUS)
