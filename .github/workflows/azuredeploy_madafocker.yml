@@ -1,7 +1,3 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/azure/functions-action
-# More GitHub Actions for Azure: https://github.com/Azure/actions
-# More info on Python, GitHub Actions, and Azure Functions: https://aka.ms/python-webapps-actions
-
 name: Build and deploy Python project to Azure Function App - madafocker
 
 on:
@@ -11,14 +7,14 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' # set this to the path to your web app project, defaults to the repository root
-  PYTHON_VERSION: '3.12' # set this to the python version to use (supports 3.6, 3.7, 3.8)
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' 
+  PYTHON_VERSION: '3.12' 
 
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read 
 
     steps:
       - name: Checkout repository
@@ -34,13 +30,15 @@ jobs:
           python -m venv venv
           source venv/bin/activate
 
+      # --- EL CAMBIO CLAVE ESTÁ AQUÍ ABAJO ---
+      # Instalamos las librerías DENTRO de una carpeta local
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install --target="./.python_packages/lib/site-packages" -r requirements.txt
 
-      # Optional: Add step to run tests here
-
+      # Al comprimir, usamos "." para incluir también las carpetas ocultas como .python_packages
       - name: Zip artifact for deployment
-        run: zip release.zip ./* -r
+        run: zip -r release.zip .
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -54,8 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write 
+      contents: read 
 
     steps:
       - name: Download artifact from build job
@@ -71,9 +69,9 @@ jobs:
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_E802CCD2A1A14033A51E6D566695382C }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_7A691D8DA8004E8E9A58FD1B015FC6A6 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_00A1A7D0C0164BA1AF19E3C6403A30FA }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_AFC2234A934B405588C006FB7FF3177E }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5CD000917B994D5BBCDB2D6134B5AB8F }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_2FB056489D9C4B49846C3291B3610608 }}
 
       - name: 'Deploy to Azure Functions'
         uses: Azure/functions-action@v1
@@ -82,4 +80,3 @@ jobs:
           app-name: 'madafocker'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          
