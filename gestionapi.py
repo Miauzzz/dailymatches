@@ -1,7 +1,7 @@
 import os
 import requests
+import pytz  # <--- USAMOS PYTZ EN LUGAR DE ZONEINFO
 from datetime import datetime, timedelta
-import pytz
 from db import summoners_collection
 from dotenv import load_dotenv
 
@@ -16,6 +16,8 @@ VALID_QUEUES = {
     'soloq': SOLOQ_QUEUE_ID,
     'flexq': FLEXQ_QUEUE_ID
 }
+
+# --- FUNCIONES AUXILIARES ---
 
 def get_summoner_info(summoner_name, tagline):
     url = f"https://americas.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{summoner_name}/{tagline}?api_key={RIOT_API_KEY}"
@@ -33,8 +35,9 @@ def get_league_info(puuid):
     return response.json() if response.status_code == 200 else None
 
 def get_matches(puuid):
+    # Usamos pytz para la zona horaria
     chile_tz = pytz.timezone("America/Santiago")
-    now = datetime.now(tz=chile_tz)
+    now = datetime.now(chile_tz)
     
     # Lógica de las 4 AM
     if now.hour < 4:
@@ -78,11 +81,11 @@ def get_queue_league_info(league_info, queue_type):
             return entry['tier'], entry['rank'], entry['leaguePoints']
     return None, None, None
 
-# --- FUNCIONES PRINCIPALES (Adaptadas para ser llamadas por Azure) ---
+# --- LÓGICA PRINCIPAL (LLAMADA POR AZURE) ---
 
 def logic_get_queue_stats(queue_type, summoner, tagline):
-    chile_tz = ZoneInfo("America/Santiago")
-    now = datetime.now(tz=chile_tz)
+    chile_tz = pytz.timezone("America/Santiago")
+    now = datetime.now(chile_tz)
 
     if queue_type not in VALID_QUEUES:
         return {"error": "Tipo de cola inválido", "status": 400}
@@ -90,14 +93,19 @@ def logic_get_queue_stats(queue_type, summoner, tagline):
     summoner = summoner.lower()
     tagline = tagline.lower()
     
-    # Buscar en BD
     summoner_data = summoners_collection.find_one({"summoner": summoner, "tagline": tagline})
     
     if not summoner_data:
         return {"error": "No existe el invocador en la base de datos", "status": 404}
 
     # Reset diario (Lógica 4 AM)
-    last_update = summoner_data.get("last_update").replace(tzinfo=chile_tz)
+    # Convertimos la fecha de la BD a aware (con zona horaria) si no lo es
+    last_update = summoner_data.get("last_update")
+    if last_update.tzinfo is None:
+        last_update = pytz.utc.localize(last_update).astimezone(chile_tz)
+    else:
+        last_update = last_update.astimezone(chile_tz)
+
     if now.hour >= 4 and last_update.hour < 4 and last_update.date() < now.date():
         summoners_collection.update_one(
             {"puuid": summoner_data["puuid"]},
@@ -121,7 +129,7 @@ def logic_get_queue_stats(queue_type, summoner, tagline):
         f"{queue_type}_tier": tier,
         f"{queue_type}_rank": rank,
         f"{queue_type}_lp": lp,
-        "last_update": datetime.now(ZoneInfo("America/Santiago"))
+        "last_update": now 
     }
     
     summoners_collection.update_one({"puuid": puuid}, {"$set": update_data})
@@ -133,10 +141,10 @@ def logic_get_queue_stats(queue_type, summoner, tagline):
     )
     formatted_last_update = update_data['last_update'].strftime("%H:%M")
     
-    # Retornamos el STRING final directamente
     return {"message": f"Victorias: {wins} / Derrotas: {losses} {league_status} (Act. {formatted_last_update})", "status": 200}
 
 def logic_add_summoner(data):
+    chile_tz = pytz.timezone("America/Santiago")
     summoner_name = data.get('summoner_name', '').lower()
     tagline = data.get('tagline', '').lower()
 
@@ -174,9 +182,8 @@ def logic_add_summoner(data):
         "flexq_tier": flexq_tier,
         "flexq_rank": flexq_rank,
         "flexq_lp": flexq_lp,
-        "last_update": datetime.now()
+        "last_update": datetime.now(chile_tz) # Usamos zona horaria explícita
     }
     
     summoners_collection.insert_one(new_summoner)
     return {"message": "Invocador agregado exitosamente", "status": 201}
-
