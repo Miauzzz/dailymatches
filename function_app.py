@@ -60,10 +60,10 @@ class WsgiMiddleware:
 
 from index import app 
 
-azure_function_app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
+app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 wsgi_app = WsgiMiddleware(app.wsgi_app)
 
-@azure_function_app.route(route="{*route}", auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="{*route}", auth_level=func.AuthLevel.ANONYMOUS)
 def main(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
     return wsgi_app.handle(req, context)
