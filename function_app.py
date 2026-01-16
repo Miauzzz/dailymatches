@@ -1,91 +1,64 @@
 import azure.functions as func
-import sys
-import traceback # Para ver el detalle del error
-from io import BytesIO
-
-class WsgiMiddleware:
-    def __init__(self, app):
-        self.app = app
-
-    def handle(self, req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-        headers = {k: v for k, v in req.headers.items()}
-        environ = {
-            'REQUEST_METHOD': req.method,
-            'SCRIPT_NAME': '',
-            'PATH_INFO': req.route_params.get('route', '/'),
-            'QUERY_STRING': req.url.split('?', 1)[1] if '?' in req.url else '',
-            'SERVER_NAME': 'azure_function',
-            'SERVER_PORT': '80',
-            'SERVER_PROTOCOL': 'HTTP/1.1',
-            'wsgi.version': (1, 0),
-            'wsgi.url_scheme': 'https',
-            'wsgi.input': BytesIO(req.get_body()),
-            'wsgi.errors': sys.stderr,
-            'wsgi.multithread': False,
-            'wsgi.multiprocess': False,
-            'wsgi.run_once': False,
-        }
-        environ.update({f'HTTP_{k.upper().replace("-", "_")}': v for k, v in headers.items()})
-        environ['CONTENT_LENGTH'] = str(len(req.get_body()))
-        environ['CONTENT_TYPE'] = headers.get('Content-Type', '')
-
-        status_response = []
-        headers_response = []
-        response_body = []
-
-        def start_response(status, headers, exc_info=None):
-            status_response.append(status)
-            headers_response.append(headers)
-            return response_body.append
-
-        app_iter = self.app(environ, start_response)
-        try:
-            for data in app_iter:
-                response_body.append(data)
-        finally:
-            if hasattr(app_iter, 'close'):
-                app_iter.close()
-
-        if not status_response:
-            return func.HttpResponse("Error interno: Flask no devolvió respuesta.", status_code=500)
-
-        status_code = int(status_response[0].split(' ')[0])
-        body = b''.join(response_body)
-        
-        return func.HttpResponse(
-            body=body,
-            status_code=status_code,
-            headers=dict(headers_response[0]),
-            mimetype=dict(headers_response[0]).get('Content-Type', 'text/plain')
-        )
+import logging
+import json
+import gestionapi # Importamos tu lógica limpia
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
-# --- ZONA DE TRAMPA DE ERRORES ---
-wsgi_app = None
-error_de_carga = None
+# --- RUTA 1: GET STATISTICS ---
+# URL: /api/summoner/{queue_type}/{summoner}/{tagline}
+@app.route(route="summoner/{queue_type}/{summoner}/{tagline}", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+def get_stats(req: func.HttpRequest) -> func.HttpResponse:
+    logging.info('Procesando solicitud de estadísticas.')
 
-try:
-    from index import app as flask_app
-    wsgi_app = WsgiMiddleware(flask_app.wsgi_app)
+    # 1. Obtener parámetros de la ruta
+    queue_type = req.route_params.get('queue_type')
+    summoner = req.route_params.get('summoner')
+    tagline = req.route_params.get('tagline')
 
-except Exception as e:
-    error_de_carga = f"ERROR AL INICIAR FLASK:\n{str(e)}\n\n{traceback.format_exc()}"
+    try:
+        # 2. Llamar a la lógica
+        resultado = gestionapi.logic_get_queue_stats(queue_type, summoner, tagline)
+        
+        # 3. Verificar si hubo error en la lógica
+        if "error" in resultado:
+            return func.HttpResponse(resultado["error"], status_code=resultado["status"])
 
-
-@app.route(route="{*route}", auth_level=func.AuthLevel.ANONYMOUS)
-def main(req: func.HttpRequest, context: func.Context) -> func.HttpResponse:
-    if error_de_carga:
+        # 4. Éxito: Devolver el texto plano (Como le gusta a tu bot)
         return func.HttpResponse(
-            error_de_carga,
-            status_code=500,
+            resultado["message"],
+            status_code=200,
             mimetype="text/plain"
         )
-    
-    if wsgi_app is None:
+
+    except Exception as e:
+        logging.error(f"Error fatal: {str(e)}")
+        return func.HttpResponse(f"Error interno del servidor: {str(e)}", status_code=500)
+
+
+# --- RUTA 2: ADD SUMMONER ---
+# URL: /api/summoner
+@app.route(route="summoner", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
+def add_summoner(req: func.HttpRequest) -> func.HttpResponse:
+    logging.info('Procesando solicitud para agregar summoner.')
+
+    try:
+        # 1. Obtener el JSON del cuerpo
+        try:
+            req_body = req.get_json()
+        except ValueError:
+            return func.HttpResponse("El cuerpo debe ser un JSON válido", status_code=400)
+
+        # 2. Llamar a la lógica
+        resultado = gestionapi.logic_add_summoner(req_body)
+
+        # 3. Responder
         return func.HttpResponse(
-            "Error desconocido: La app no se inicializó correctamente.",
-            status_code=500
+            resultado["message"],
+            status_code=resultado["status"],
+            mimetype="text/plain"
         )
 
-    return wsgi_app.handle(req, context)
+    except Exception as e:
+        logging.error(f"Error fatal: {str(e)}")
+        return func.HttpResponse(f"Error al agregar: {str(e)}", status_code=500)
