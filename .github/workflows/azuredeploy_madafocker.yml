@@ -1,0 +1,82 @@
+name: Build and deploy Python project to Azure Function App - madafocker
+
+on:
+  push:
+    branches:
+      - AzureDeploy
+  workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.' 
+  PYTHON_VERSION: '3.12' 
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read 
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python version
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Create and start virtual environment
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+
+      # --- EL CAMBIO CLAVE ESTÁ AQUÍ ABAJO ---
+      # Instalamos las librerías DENTRO de una carpeta local
+      - name: Install dependencies
+        run: |
+          pip install --target="./.python_packages/lib/site-packages" -r requirements.txt
+
+      # Al comprimir, usamos "." para incluir también las carpetas ocultas como .python_packages
+      - name: Zip artifact for deployment
+        run: zip -r release.zip .
+
+      - name: Upload artifact for deployment job
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-app
+          path: |
+            release.zip
+            !venv/
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write 
+      contents: read 
+
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: python-app
+
+      - name: Unzip artifact for deployment
+        run: |
+          unzip release.zip
+          rm release.zip
+        
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_AFC2234A934B405588C006FB7FF3177E }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_5CD000917B994D5BBCDB2D6134B5AB8F }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_2FB056489D9C4B49846C3291B3610608 }}
+
+      - name: 'Deploy to Azure Functions'
+        uses: Azure/functions-action@v1
+        id: deploy-to-function
+        with:
+          app-name: 'madafocker'
+          slot-name: 'Production'
+          package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
