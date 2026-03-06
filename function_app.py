@@ -17,12 +17,12 @@ except Exception as e:
 
 
 # --- RUTA 1: TU API (Si cargó bien) ---
-@app.route(route="summoner/{queue_type}/{server}/{summoner}/{tagline}", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
+@app.route(route="summoner/{queue_type}/{server}/{alias}", methods=["GET"], auth_level=func.AuthLevel.ANONYMOUS)
 def get_stats(req: func.HttpRequest) -> func.HttpResponse:
     # 1. Si hubo error al arrancar, mostrarlo aquí
     if error_carga:
         return func.HttpResponse(
-            f"⛔ ERROR CRÍTICO AL INICIAR:\n\n{error_carga}", 
+            f"ERROR CRÍTICO AL INICIAR:\n\n{error_carga}", 
             status_code=500, 
             mimetype="text/plain"
         )
@@ -31,10 +31,9 @@ def get_stats(req: func.HttpRequest) -> func.HttpResponse:
     try:
         queue_type = req.route_params.get('queue_type')
         server = req.route_params.get('server')
-        summoner = req.route_params.get('summoner')
-        tagline = req.route_params.get('tagline')
+        alias = req.route_params.get('alias')
 
-        resultado = gestionapi.logic_get_queue_stats(queue_type, server, summoner, tagline)
+        resultado = gestionapi.logic_get_queue_stats(queue_type, server, alias)
         
         if "error" in resultado:
             return func.HttpResponse(resultado["error"], status_code=resultado["status"])
@@ -49,7 +48,7 @@ def get_stats(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="summoner", methods=["POST"], auth_level=func.AuthLevel.ANONYMOUS)
 def add_summoner(req: func.HttpRequest) -> func.HttpResponse:
     if error_carga:
-        return func.HttpResponse(f"⛔ ERROR CRÍTICO:\n{error_carga}", status_code=500)
+        return func.HttpResponse(f"ERROR CRÍTICO:\n{error_carga}", status_code=500)
 
     try:
         try:
