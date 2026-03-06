@@ -1,6 +1,6 @@
 import os
 import requests
-import pytz  # <--- USAMOS PYTZ EN LUGAR DE ZONEINFO
+import pytz
 from datetime import datetime, timedelta
 from db import summoners_collection
 from dotenv import load_dotenv
@@ -54,7 +54,14 @@ def get_summoner_info(summoner_name, tagline, region):
     response = requests.get(url)
     return response.json() if response.status_code == 200 else None
 
-def get_summoner_id(puuid, server):
+def get_account_by_puuid(puuid, region):
+    """Obtiene gameName y tagLine actuales desde Riot por puuid."""
+    url = f"https://{region}.api.riotgames.com/riot/account/v1/accounts/by-puuid/{puuid}?api_key={RIOT_API_KEY}"
+    response = requests.get(url)
+    return response.json() if response.status_code == 200 else None
+
+def get_summoner_extra(puuid, server):
+    """Obtiene datos extra del invocador (nivel, icono). Riot ya no devuelve 'id'."""
     platform = PLATFORM_HOSTS[server]
     url = f"https://{platform}/lol/summoner/v4/summoners/by-puuid/{puuid}?api_key={RIOT_API_KEY}"
     response = requests.get(url)
@@ -115,7 +122,7 @@ def get_queue_league_info(league_info, queue_type):
 
 # --- LÓGICA PRINCIPAL (LLAMADA POR AZURE) ---
 
-def logic_get_queue_stats(queue_type, server, summoner, tagline):
+def logic_get_queue_stats(queue_type, server, alias):
     chile_tz = pytz.timezone("America/Santiago")
     now = datetime.now(chile_tz)
 
@@ -125,10 +132,9 @@ def logic_get_queue_stats(queue_type, server, summoner, tagline):
         return {"error": f"Servidor inválido. Válidos: {list(PLATFORM_HOSTS.keys())}", "status": 400}
 
     region = PLATFORM_TO_REGIONAL[server]
-    summoner = summoner.lower()
-    tagline = tagline.lower()
+    alias = alias.lower()
     
-    summoner_data = summoners_collection.find_one({"summoner": summoner, "tagline": tagline, "server": server})
+    summoner_data = summoners_collection.find_one({"alias": alias, "server": server})
     
     if not summoner_data:
         return {"error": "No existe el invocador en la base de datos", "status": 404}
@@ -155,6 +161,19 @@ def logic_get_queue_stats(queue_type, server, summoner, tagline):
         )
 
     puuid = summoner_data['puuid']
+
+    # Auto-sync: actualizar summoner name y tagline desde Riot
+    riot_account = get_account_by_puuid(puuid, region)
+    if riot_account:
+        riot_name = riot_account.get('gameName', '').lower()
+        riot_tag = riot_account.get('tagLine', '').lower()
+        if riot_name and riot_tag:
+            if riot_name != summoner_data['summoner'] or riot_tag != summoner_data['tagline']:
+                summoners_collection.update_one(
+                    {"puuid": puuid},
+                    {"$set": {"summoner": riot_name, "tagline": riot_tag}}
+                )
+
     wins, losses = process_matches(puuid, queue_type, region)
     
     league_info = get_league_info(puuid, server)
@@ -186,25 +205,27 @@ def logic_add_summoner(data):
     summoner_name = data.get('summoner_name', '').lower()
     tagline = data.get('tagline', '').lower()
     server = data.get('server', '').lower()
+    alias = data.get('alias', '').lower()
 
-    if not summoner_name or not tagline or not server:
-        return {"message": "Faltan datos (summoner_name, tagline, server)", "status": 400}
+    if not summoner_name or not tagline or not server or not alias:
+        return {"message": "Faltan datos (summoner_name, tagline, server, alias)", "status": 400}
     if server not in PLATFORM_HOSTS:
         return {"message": f"Servidor inválido. Válidos: {list(PLATFORM_HOSTS.keys())}", "status": 400}
+
+    if summoners_collection.find_one({"alias": alias, "server": server}):
+        return {"message": f"Ya existe un invocador con alias '{alias}' en el servidor '{server}'", "status": 400}
 
     region = PLATFORM_TO_REGIONAL[server]
 
     summoner_info = get_summoner_info(summoner_name, tagline, region)
-    if not summoner_info:
-        return {"message": "No existe el invocador en Riot", "status": 404}
+    if not summoner_info or 'puuid' not in summoner_info:
+        return {"message": "No existe el invocador en Riot o la respuesta no contiene 'puuid'", "status": 404}
 
     puuid = summoner_info['puuid']
     if summoners_collection.find_one({"puuid": puuid, "server": server}):
         return {"message": "El invocador ya existe en la base de datos", "status": 400}
 
-    summoner_id_info = get_summoner_id(puuid, server)
-    if not summoner_id_info:
-        return {"message": "Error al obtener datos del invocador", "status": 500}
+    summoner_extra = get_summoner_extra(puuid, server)
 
     league_info = get_league_info(puuid, server)
     soloq_tier, soloq_rank, soloq_lp = get_queue_league_info(league_info, 'soloq') if league_info else (None, None, None)
@@ -212,10 +233,11 @@ def logic_add_summoner(data):
 
     new_summoner = {
         "puuid": puuid,
+        "alias": alias,
         "summoner": summoner_name,
         "tagline": tagline,
         "server": server,
-        "id_summoner": summoner_id_info['id'],
+        "summoner_level": summoner_extra.get('summonerLevel') if summoner_extra else None,
         "soloq_wins": 0,
         "soloq_losses": 0,
         "soloq_tier": soloq_tier,
