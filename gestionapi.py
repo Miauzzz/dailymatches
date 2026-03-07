@@ -194,7 +194,7 @@ def logic_get_queue_stats(queue_type, server, alias):
     league_status = (
         f"| {tier} {rank} ({lp} LP)"
         if tier and rank and lp is not None
-        else "| Y no tiene liga asignada"
+        else "| Sin rango"
     )
     formatted_last_update = update_data['last_update'].strftime("%H:%M")
     
@@ -253,3 +253,4 @@ def logic_add_summoner(data):
     
     summoners_collection.insert_one(new_summoner)
     return {"message": "Invocador agregado exitosamente", "status": 201}
+
