@@ -24,6 +24,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Setup Python version
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies into package folder
+        run: pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+
       - name: Zip artifact for deployment
         run: zip -r release.zip . -x ".git/*"
 
@@ -65,5 +73,3 @@ jobs:
           app-name: 'DailyMatchesV2'
           slot-name: 'Production'
           package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
-          scm-do-build-during-deployment: true
-          enable-oryx-build: true
